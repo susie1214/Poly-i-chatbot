@@ -1,0 +1,52 @@
+version: '3.8'
+services:
+  backend-python:
+    build:
+      context: ./backend-python
+      dockerfile: Dockerfile
+    container_name: poly_backend_python
+    volumes:
+      - ./backend-python:/app:cached
+      - ./backend-python/models:/app/models:cached
+      - ./backend-python/.env:/app/.env:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+
+  backend-node:
+    build:
+      context: ./backend-node
+      dockerfile: Dockerfile
+    container_name: poly_backend_node
+    depends_on:
+      - backend-python
+    volumes:
+      - ./backend-node:/app:cached
+      - ./backend-node/.env:/app/.env:ro
+    environment:
+      - NODE_ENV=development
+      - PYTHON_LLM_URL=http://backend-python:5001
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: poly_frontend
+    depends_on:
+      - backend-node
+    volumes:
+      - ./frontend:/app:cached
+    environment:
+      - VITE_DEV_SERVER_HOST=0.0.0.0
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
+# Notes:
+# - Model files must be placed in ./backend-python/models on the host.
+# - If you want the frontend to call the host Node API when testing from host browser, adjust CORS / API URLs accordingly.
