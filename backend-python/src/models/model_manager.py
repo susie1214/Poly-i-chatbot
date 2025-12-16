@@ -15,14 +15,20 @@ def initialize_models():
     try:
         from llama_cpp import Llama
         
-        model_path = os.getenv(
-            'LLM_MODEL_PATH',
-            './models/solar-10.7b-instruct-v1.0.Q4_K_M.gguf'
-        )
+        # 모델 경로 설정 (backend-python 루트 기준)
+        backend_root = Path(__file__).parent.parent.parent  # src/models/model_manager.py -> backend-python/
+        model_filename = 'solar-10.7b-instruct-v1.0.Q4_K_M.gguf'
         
-        # 절대 경로로 변환
-        if not os.path.isabs(model_path):
-            model_path = os.path.join(os.path.dirname(__file__), '..', '..', model_path)
+        # 환경변수 우선, 없으면 기본 경로
+        model_path = os.getenv('LLM_MODEL_PATH')
+        if not model_path:
+            model_path = backend_root / 'models' / model_filename
+        else:
+            # 상대 경로면 절대 경로로 변환
+            if not os.path.isabs(model_path):
+                model_path = backend_root / model_path
+        
+        model_path = str(model_path)
         
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model not found at {model_path}")
