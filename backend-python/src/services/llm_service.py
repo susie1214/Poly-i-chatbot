@@ -3,6 +3,219 @@ from src.models.model_manager import get_llm_model
 
 logger = logging.getLogger(__name__)
 
+# 키워드 기반 응답 (모델이 로드되지 않았을 때 사용)
+KEYWORD_RESPONSES = {
+    'ko': {
+        '주차': {
+            'title': '🚗 주차장 안내',
+            'content': """## 분당폴리텍융합기술교육원 주차 안내
+
+### 주변 주차장 옵션
+1. **분당구청 주차장**
+   - 1시간 무료, 초과 시 30분당 400원
+   - 평일 8시~19시 운영
+
+2. **서현역 환승공영주차장**
+   - 30분 400원, 1시간 1,000원
+   - 24시간 운영
+
+3. **호텔스카이파크 센트럴서울판교**
+   - 평일 4,900원, 휴일 4,400원
+   - 월 정기권 17만원
+
+4. **황새울공원 주차장**
+   - 새벽 5시 도착 시 주차 가능
+   - 주소: 경기 성남시 분당구 황새울로 287
+
+**분당폴리텍 위치**: 경기 성남시 분당구 서현동
+**가장 가까운 주차**: 분당구청 주차장 (1시간 무료)"""
+        },
+        '식사': {
+            'title': '🍽️ 식사 정보',
+            'content': """## 분당폴리텍융합기술교육원 식사 안내
+
+### 학내 구내식당
+- **분당우체국 구내식당**: 6,500원
+- **분당세무서**: 6,500원
+- **AK 구내식당**: 6,000원
+
+### 근처 음식점
+- 일반 밥집: 약 12,000원 (점심)
+- 편의점: 3,000~5,000원
+
+### 학교 시설
+- 1층: 도시락 섭취 공간 운영
+- 냉장고, 전자렌지, 정수기 제공
+
+**점심시간**: 12:00~13:00 (±30분 조정 가능)"""
+        },
+        '수당': {
+            'title': '💰 훈련수당 및 교통비 안내',
+            'content': """## 국민취업지원제도 지원금
+
+### 훈련수당
+- **일반**: 1일 3,300원 (월 6만6천원 한도)
+- **취약계층**: 1일 1만원 (월 20만원 한도)
+
+### 교통비
+- **지원액**: 1일 2,500원 (월 5만원 한도)
+
+### 지급 조건
+- 출석률 80% 이상 (월 단위)
+- 지급 시기: 다음달 중순경
+- 계좌: 개인 예금 통장으로 입금
+
+### 지원 대상
+- 만 39세 이하
+- 2년제 대학 이상 졸업(예정)자
+- 4년제 대학 2년 이상 수료자
+- 동일/유사 계열 2년 이상 실무 종사자"""
+        },
+        '위치': {
+            'title': '📍 분당폴리텍융합기술교육원 위치',
+            'content': """## 분당폴리텍융합기술교육원 안내
+
+### 정확한 위치
+- **주소**: 경기 성남시 분당구 서현동
+- **전화**: 031-696-8803
+- **대중교통**: 서현역 인근
+
+### 건물 안내
+- **2층**: 도서관, 행정실
+- **1층**: 강의실, 도시락 섭취 공간
+- **편의시설**: 냉장고, 전자렌지, 정수기
+
+### 교통 안내
+- 서현역 2번 출구 도보 15분
+- 주변 주차장: 분당구청, 서현역 환승 주차장"""
+        },
+    },
+    'en': {
+        'parking': {
+            'title': '🚗 Parking Guide',
+            'content': """## Bundang Polytechnic Parking Information
+
+### Nearby Parking Options
+1. **Bundang District Office Parking**
+   - 1 hour free, 400 won per 30 min after
+   - Weekdays 8 AM - 7 PM
+
+2. **Seohyeon Station Transfer Parking**
+   - 400 won per 30 min, 1,000 won per hour
+   - Open 24 hours
+
+3. **Hotel Skypark Central Seoul Pangyo**
+   - 4,900 won (weekday), 4,400 won (weekend)
+   - Monthly pass: 170,000 won
+
+4. **Hwangsaeul Park Parking**
+   - Arrive at 5 AM for guaranteed spot
+   - Address: 287, Hwangsaeul-ro, Bundang-gu
+
+**Location**: Seohyeon-dong, Bundang-gu, Seongnam-si, Gyeonggi-do"""
+        },
+        'lunch': {
+            'title': '🍽️ Dining Information',
+            'content': """## Bundang Polytechnic Dining Options
+
+### On-Campus Cafeterias
+- Bundang Post Office: 6,500 won
+- Tax Office: 6,500 won
+- AK Cafeteria: 6,000 won
+
+### Nearby Restaurants
+- General restaurants: ~12,000 won (lunch)
+- Convenience stores: 3,000-5,000 won
+
+### School Facilities
+- Floor 1: Lunch area available
+- Amenities: Refrigerator, microwave, water purifier
+
+**Lunch Time**: 12:00 PM - 1:00 PM (±30 min flexible)"""
+        },
+        'allowance': {
+            'title': '💰 Training Allowance Information',
+            'content': """## National Employment Support Program Benefits
+
+### Training Allowance
+- **General**: 3,300 won/day (Max 66,000 won/month)
+- **Low-income**: 10,000 won/day (Max 200,000 won/month)
+
+### Transportation
+- **Allowance**: 2,500 won/day (Max 50,000 won/month)
+
+### Payment Terms
+- Requirement: 80% or higher monthly attendance
+- Payment: Mid-next month to personal account
+- Unit: Monthly
+
+### Eligibility
+- Age 39 or under
+- 2-year university graduate or expected
+- 4-year university with 2+ years coursework
+- 2+ years practical experience in related field"""
+        },
+    }
+}
+
+def get_keyword_response(prompt: str, language: str = 'ko') -> dict:
+    """키워드 기반 응답 검색"""
+    prompt_lower = prompt.lower()
+    responses = KEYWORD_RESPONSES.get(language, KEYWORD_RESPONSES['ko'])
+    
+    # 한국어 키워드 매핑
+    if language == 'ko':
+        keyword_map = {
+            '주차': '주차',
+            '식사': '식사',
+            '수당': '수당',
+            '위치': '위치',
+            '점심': '식사',
+            '밥': '식사',
+            '주소': '위치',
+            '가는길': '위치',
+            '교통': '위치',
+            '훈련수당': '수당',
+            '교통비': '수당',
+            'allowance': '수당',
+        }
+        
+        for keyword, response_key in keyword_map.items():
+            if keyword in prompt_lower:
+                if response_key in responses:
+                    return {
+                        'response': responses[response_key]['content'],
+                        'tokens_used': 0,
+                        'model': 'KEYWORD_MATCHER',
+                        'language': language,
+                        'source': 'keyword'
+                    }
+    else:
+        # 영어 키워드 매핑
+        keyword_map = {
+            'parking': 'parking',
+            'lunch': 'lunch',
+            'dining': 'lunch',
+            'restaurant': 'lunch',
+            'allowance': 'allowance',
+            'food': 'lunch',
+            'location': 'parking',
+            'address': 'parking',
+        }
+        
+        for keyword, response_key in keyword_map.items():
+            if keyword in prompt_lower:
+                if response_key in responses:
+                    return {
+                        'response': responses[response_key]['content'],
+                        'tokens_used': 0,
+                        'model': 'KEYWORD_MATCHER',
+                        'language': language,
+                        'source': 'keyword'
+                    }
+    
+    return None
+
 def generate_response(prompt: str, user_id: str = "default", max_tokens: int = 256, temperature: float = 0.7, language: str = "ko"):
     """
     SOLAR-7B 모델로 텍스트 생성 (한국어/영어 지원)
@@ -19,12 +232,18 @@ def generate_response(prompt: str, user_id: str = "default", max_tokens: int = 2
     """
     
     try:
+        # 1. 먼저 키워드 기반 응답 확인
+        keyword_response = get_keyword_response(prompt, language)
+        if keyword_response:
+            return keyword_response
+        
+        # 2. LLM 모델로 응답 생성
         model = get_llm_model()
         
         if not model:
             # 모델이 로드되지 않은 경우 기본 응답 반환
             logger.warning("LLM model not loaded, using fallback response")
-            fallback_msg = "죄송합니다. 모델 로드 중입니다." if language == "ko" else "Sorry, loading model. Please try again."
+            fallback_msg = "죄송합니다. 모델 로드 중입니다. 다시 시도해주세요." if language == "ko" else "Sorry, model is loading. Please try again."
             return {
                 'response': fallback_msg,
                 'tokens_used': 0,
