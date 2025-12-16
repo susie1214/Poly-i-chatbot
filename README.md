@@ -21,7 +21,9 @@
 - ♻ 동일 질의에 대해 일관된 결과 제공
 
 ----
-<img width="500" height="922" alt="image" src="https://github.com/user-attachments/assets/1c26a355-4d20-4733-a6ce-d8cd377c2269" />
+<img width="425" height="878" alt="image" src="https://github.com/user-attachments/assets/2d4eb150-03c3-4363-aad3-17e23f1d7ce9" />
+<img width="453" height="889" alt="image" src="https://github.com/user-attachments/assets/1ed61e22-e0f8-4889-b8e0-f210949eb1be" />
+
 
 ## 🏗 System Architecture
 ```
