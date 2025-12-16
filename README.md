@@ -1,4 +1,4 @@
-# 🧩 Poly-i Chatbot
+# 📡 Poly-i Chatbot
 
 공공·기관 환경을 염두에 둔 **문서 기반 질의응답 시스템**입니다.  
 과도한 생성 중심 접근을 지양하고, **검색·근거·일관성**을 중심으로 설계되었습니다.
@@ -21,6 +21,7 @@
 - ♻ 동일 질의에 대해 일관된 결과 제공
 
 ----
+<img width="500" height="922" alt="image" src="https://github.com/user-attachments/assets/1c26a355-4d20-4733-a6ce-d8cd377c2269" />
 
 ## 🏗 System Architecture
 ```
@@ -103,7 +104,7 @@ Poly-i-chatbot/
 
 ----
 
-## ▶ Execution
+## 🚀 Execution
 ```bash
 pip install -r requirements.txt
 python app.py
