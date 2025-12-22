@@ -32,21 +32,39 @@ def initialize_models():
         print(f"  Model path: {model_path}")
         print(f"  Model size: {os.path.getsize(model_path) / (1024**3):.2f} GB")
 
-        _models['llm'] = Llama(
-            model_path=model_path,
-            n_gpu_layers=-1,  # -1 = 모든 레이어를 GPU에 로드 (40 → -1)
-            n_ctx=4096,
-            max_tokens=512,
-            temperature=0.7,
-            top_p=0.95,
-            verbose=False,
-        )
+        llm_device = os.getenv("LLM_DEVICE", "auto").lower()
+        prefer_gpu = llm_device in ("auto", "gpu", "cuda")
+
+        def _load_llm(n_gpu_layers: int):
+            return Llama(
+                model_path=model_path,
+                n_gpu_layers=n_gpu_layers,
+                n_ctx=4096,
+                max_tokens=512,
+                temperature=0.7,
+                top_p=0.95,
+                verbose=False,
+            )
+
+        try:
+            if prefer_gpu and torch.cuda.is_available():
+                _models['llm'] = _load_llm(-1)
+            else:
+                _models['llm'] = _load_llm(0)
+        except Exception:
+            if prefer_gpu and torch.cuda.is_available():
+                print("⚠️ GPU 로딩 실패, CPU로 재시도합니다.")
+                _models['llm'] = _load_llm(0)
+            else:
+                raise
         print("✅ LLM Model loaded successfully")
         print(f"  GPU Available: {torch.cuda.is_available()}")
         if torch.cuda.is_available():
             print(f"  GPU: {torch.cuda.get_device_name(0)}")
     except Exception as e:
-        print(f"❌ Failed to load LLM Model: {e}")
+        import traceback
+        print("? Failed to load LLM Model (details below):")
+        traceback.print_exc()
         _models['llm'] = None
 
     # 임베딩 모델 로드 (기본: Qwen/Qwen3-Embedding-0.6B, GPU float16)

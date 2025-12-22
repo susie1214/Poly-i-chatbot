@@ -318,7 +318,7 @@ def _load_pdfs(pdf_paths: Optional[List[Path]] = None, include_static: bool = Tr
     for pdf_path in targets:
 
         try:
-            chandra_enabled = os.getenv("CHANDRA_PDF_ENABLED", "true").lower() in (
+            chandra_enabled = os.getenv("CHANDRA_PDF_ENABLED", "false").lower() in (
                 "1",
                 "true",
                 "yes",
