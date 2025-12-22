@@ -10,8 +10,10 @@ RAG (Retrieval Augmented Generation) 서비스
 
 
 
+import json
 import logging
 import os
+import pickle
 import re
 from pathlib import Path
 
@@ -149,6 +151,90 @@ _rag_system = {
     "use_faiss": False,
 }
 
+CACHE_DIR = Path(__file__).with_name("rag_cache")
+CACHE_INDEX = CACHE_DIR / "faiss.index"
+CACHE_EMB = CACHE_DIR / "embeddings.npy"
+CACHE_CHUNKS = CACHE_DIR / "chunks.json"
+CACHE_META = CACHE_DIR / "metadatas.json"
+CACHE_PCA = CACHE_DIR / "pca.pkl"
+CACHE_INFO = CACHE_DIR / "info.json"
+
+
+def _cache_exists() -> bool:
+    return CACHE_EMB.exists() and CACHE_CHUNKS.exists() and CACHE_META.exists()
+
+
+def _load_cache() -> bool:
+    if not _cache_exists():
+        return False
+
+    try:
+        emb_norm = np.load(CACHE_EMB)
+        with CACHE_CHUNKS.open("r", encoding="utf-8") as f:
+            chunks = json.load(f)
+        with CACHE_META.open("r", encoding="utf-8") as f:
+            metadatas = json.load(f)
+        pca = None
+        if CACHE_PCA.exists():
+            with CACHE_PCA.open("rb") as f:
+                pca = pickle.load(f)
+
+        index = None
+        use_faiss = False
+        if _FAISS_AVAILABLE and CACHE_INDEX.exists():
+            index = faiss.read_index(str(CACHE_INDEX))
+            use_faiss = True
+
+        dim = emb_norm.shape[1] if emb_norm.size else None
+        _rag_system["index"] = index
+        _rag_system["embeddings_norm"] = emb_norm
+        _rag_system["metadatas"] = metadatas
+        _rag_system["chunks"] = chunks
+        _rag_system["pca"] = pca
+        _rag_system["dimension"] = dim
+        _rag_system["original_dimension"] = pca.n_features_ if pca is not None else dim
+        _rag_system["initialized"] = True
+        _rag_system["use_faiss"] = use_faiss
+        print("  ✅ RAG cache loaded from disk")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to load RAG cache: {e}")
+        return False
+
+
+def _save_cache() -> None:
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        emb_norm = _rag_system.get("embeddings_norm")
+        chunks = _rag_system.get("chunks", [])
+        metadatas = _rag_system.get("metadatas", [])
+        pca = _rag_system.get("pca")
+
+        if emb_norm is None:
+            return
+
+        np.save(CACHE_EMB, emb_norm)
+        with CACHE_CHUNKS.open("w", encoding="utf-8") as f:
+            json.dump(chunks, f, ensure_ascii=False)
+        with CACHE_META.open("w", encoding="utf-8") as f:
+            json.dump(metadatas, f, ensure_ascii=False)
+        if pca is not None:
+            with CACHE_PCA.open("wb") as f:
+                pickle.dump(pca, f)
+        if _FAISS_AVAILABLE and _rag_system.get("index") is not None:
+            faiss.write_index(_rag_system["index"], str(CACHE_INDEX))
+        with CACHE_INFO.open("w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "dimension": _rag_system.get("dimension"),
+                    "use_faiss": _rag_system.get("use_faiss", False),
+                },
+                f,
+                ensure_ascii=False,
+            )
+        print("  ✅ RAG cache saved to disk")
+    except Exception as e:
+        logger.warning(f"Failed to save RAG cache: {e}")
 
 
 
@@ -539,6 +625,11 @@ def _build_embeddings(
 def initialize_rag_system(pdf_paths: Optional[List[str]] = None, target_dim: int = 256) -> bool:
     """PDF를 읽어 벡터 인덱스를 구성."""
     try:
+        cache_mode = os.getenv("RAG_CACHE_MODE", "auto").lower()
+        if cache_mode in ("auto", "load") and _cache_exists():
+            if _load_cache():
+                return True
+
         print("  📄 PDF 문서 로딩 중...")
         paths = [Path(p) for p in pdf_paths] if pdf_paths else None
         texts, metas = _load_pdfs(paths, include_static=True)
@@ -595,6 +686,8 @@ def initialize_rag_system(pdf_paths: Optional[List[str]] = None, target_dim: int
         print(f"     - 총 청크: {len(chunks)}")
         print(f"     - 차원: {dim}")
         print(f"     - FAISS: {'사용' if _FAISS_AVAILABLE else '미사용'}")
+        if cache_mode in ("auto", "refresh", "save"):
+            _save_cache()
         return True
 
     except Exception as e:
