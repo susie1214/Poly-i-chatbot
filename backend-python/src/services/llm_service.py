@@ -1,423 +1,512 @@
 import logging
+import re
+from typing import Optional, Dict, Any
+
 from src.models.model_manager import get_llm_model
 
 logger = logging.getLogger(__name__)
 
-# 키워드 기반 응답 (모델이 로드되지 않았을 때 사용)
-KEYWORD_RESPONSES = {
-    'ko': {
-        '주차': {
-            'title': '🚗 주차장 안내',
-            'content': """## 분당폴리텍융합기술교육원 주차 안내
-
-### 주변 주차장 옵션
-1. **분당구청 주차장**
-   - 1시간 무료, 초과 시 30분당 400원
-   - 평일 8시~19시 운영
-
-2. **서현역 환승공영주차장**
+KEYWORD_RESPONSES: Dict[str, Dict[str, Dict[str, str]]] = {
+    "ko": {
+        "주차": {
+            "title": "주차 정보 안내",
+            "content": """## 분당폴리텍 주변 주차 안내
+1. 분당구청 주차장(가장 가깝고 저렴)
+   - 1시간 무료, 이후 30분당 400원 부과
+   - 평일 08:00~19:00 운영
+2. 서현역 환승공영주차장
    - 30분 400원, 1시간 1,000원
    - 24시간 운영
-
-3. **호텔스카이파크 센트럴서울판교**
-   - 평일 4,900원, 휴일 4,400원
-   - 월 정기권 17만원
-
-4. **황새울공원 주차장**
-   - 새벽 5시 도착 시 주차 가능
-   - 주소: 경기 성남시 분당구 황새울로 287
-
-**분당폴리텍 위치**: 경기 성남시 분당구 서현동
-**가장 가까운 주차**: 분당구청 주차장 (1시간 무료)"""
+3. 황새울공원 주차장
+   - 무료 이용 가능(공간 협소)
+교내 주차타워는 학과사무실 또는 행정실에 문의해 주세요.
+주차장 검색: https://map.kakao.com/?q=%EB%B6%84%EB%8B%B9%ED%8F%B4%EB%A6%AC%ED%85%8D%20%EC%A3%BC%EC%B0%A8%EC%9E%A5"""
         },
-        '식사': {
-            'title': '🍽️ 식사 정보',
-            'content': """## 분당폴리텍융합기술교육원 식사 안내
-
-### 학내 구내식당
-- **분당우체국 구내식당**: 6,500원
-- **분당세무서**: 6,500원
-- **AK 구내식당**: 6,000원
-
-### 근처 음식점
-- 일반 밥집: 약 12,000원 (점심)
-- 편의점: 3,000~5,000원
-
-### 학교 시설
-- 1층: 도시락 섭취 공간 운영
-- 냉장고, 전자렌지, 정수기 제공
-
-**점심시간**: 12:00~13:00 (±30분 조정 가능)"""
+        "식당": {
+            "title": "식당 안내",
+            "content": """## 분당폴리텍 식당 정보 안내
+### 교내 시설
+- 1층 카페테리아: 도시락 식사 공간(냉장고/전자레인지/정수기/식수대)
+### 주변 식당
+- 분당우체국/분당세무서/AK플라자 구내식당 등
+MAP_EMBED:https://maps.google.com/maps?q=%EC%84%9C%ED%98%84%EC%97%AD%20%EB%A7%9B%EC%A7%91&output=embed
+맛집 참고 링크: https://blog.naver.com/hahaha067/224088892518"""
         },
-        '수당': {
-            'title': '💰 훈련수당 및 교통비 안내',
-            'content': """## 국민취업지원제도 지원금
-
-### 훈련수당
-- **일반**: 1일 3,300원 (월 6만6천원 한도)
-- **취약계층**: 1일 1만원 (월 20만원 한도)
-
-### 교통비
-- **지원액**: 1일 2,500원 (월 5만원 한도)
-
-### 지급 조건
-- 출석률 80% 이상 (월 단위)
-- 지급 시기: 다음달 중순경
-- 계좌: 개인 예금 통장으로 입금
-
-### 지원 대상
-- 만 39세 이하
-- 2년제 대학 이상 졸업(예정)자
-- 4년제 대학 2년 이상 수료자
-- 동일/유사 계열 2년 이상 실무 종사자"""
+        "식사": {
+            "title": "식당 안내",
+            "content": """## 분당폴리텍 식당 정보 안내
+### 교내 시설
+- 1층 카페테리아: 도시락 식사 공간(냉장고/전자레인지/정수기/식수대)
+### 주변 식당
+- 분당우체국/분당세무서/AK플라자 구내식당 등
+MAP_EMBED:https://maps.google.com/maps?q=%EC%84%9C%ED%98%84%EC%97%AD%20%EB%A7%9B%EC%A7%91&output=embed
+맛집 참고 링크: https://blog.naver.com/hahaha067/224088892518"""
         },
-        '위치': {
-            'title': '📍 분당폴리텍융합기술교육원 위치',
-            'content': """## 분당폴리텍융합기술교육원 안내
+        "식당주차": {
+            "title": "식당/주차장 안내",
+            "content": """## 분당폴리텍 식당/주차장 안내
+### 식당(교내/주변)
+- 1층 카페테리아: 도시락 식사 공간(냉장고/전자레인지/정수기/식수대)
+- 주변 식당: 분당우체국/분당세무서/AK플라자 구내식당 등
+MAP_EMBED:https://maps.google.com/maps?q=%EC%84%9C%ED%98%84%EC%97%AD%20%EB%A7%9B%EC%A7%91&output=embed
+맛집 참고 링크: https://blog.naver.com/hahaha067/224088892518
 
-### 정확한 위치
-- **주소**: 경기 성남시 분당구 서현동
-- **전화**: 031-696-8803
-- **대중교통**: 서현역 인근
+### 주변 주차장
+- 분당구청 주차장: 1시간 무료, 이후 30분당 400원
+- 서현역 환승공영주차장: 30분 400원, 1시간 1,000원
+- 황새울공원 주차장: 무료(공간 협소)
+MAP_EMBED:https://maps.google.com/maps?q=%EB%B6%84%EB%8B%B9%EC%9C%B5%ED%95%A9%EA%B8%B0%EC%88%A0%EA%B5%90%EC%9C%A1%EC%9B%90%20%EC%A3%BC%EC%B0%A8%EC%9E%A5&output=embed
+주차장 검색: https://map.kakao.com/?q=%EB%B6%84%EB%8B%B9%ED%8F%B4%EB%A6%AC%ED%85%8D%20%EC%A3%BC%EC%B0%A8%EC%9E%A5"""
+        },
+        "학과소개": {
+            "title": "학과 소개",
+            "content": """## 분당융합기술교육원 학과 소개
+### 하이테크과정
+1. 인공지능소프트웨어과(구 AI금융소프트웨어과)
+2. 생명의료시스템과
+3. AI응용소프트웨어과
 
-### 건물 안내
-- **2층**: 도서관, 행정실
-- **1층**: 강의실, 도시락 섭취 공간
-- **편의시설**: 냉장고, 전자렌지, 정수기
+### 신중년 특화과정(집중)
+1. AI코딩어시스턴스직종
+2. AIoT코딩기초직종
+3. 정보시스템감리기초직종
 
-### 교통 안내
-- 서현역 2번 출구 도보 15분
-- 주변 주차장: 분당구청, 서현역 환승 주차장"""
+각 과정의 세부 커리큘럼과 모집 요강은 공식 자료를 기준으로 확인해 주세요.
+궁금한 점은 교학처(031-696-8803)로 문의해 주세요."""
+        },
+        "신중년특화안내": {
+            "title": "신중년 특화과정(집중) 안내",
+            "content": """신중년 특화과정(집중) 학과 안내 해드리겠습니다.
+1. AI코딩어시스턴스직종
+2. AIoT코딩기초직종
+3. 정보시스템감리기초직종
+이렇게 구분됩니다."""
+        },
+        "취업현황": {
+            "title": "취업 현황 안내",
+            "content": """## 취업 현황 안내
+최근 5년(2019-2023) 기준 취업률은 **91.7%**입니다.
+
+### AI금융소프트웨어과 (2024~2016)
+- 뱅크웨어글로벌(주)
+- ㈜유클릭
+- ㈜매커스
+- ㈜큐드
+- ㈜만들다소프트
+- ㈜희남
+
+### AI응용소프트웨어과 (2024~2017)
+- (주)인스케이프
+- 주식회사퀸타매트릭스
+- 하이온넷(주)
+- ㈜라온피플
+- ㈜APSystems
+
+### 생명의료시스템과 (2024~2016)
+- 이지솔루텍
+- 에스티젠바이오
+- 기초과학연구원
+
+학과별 취업 사례와 상세 통계는 공식 자료를 기준으로 확인해 주세요.
+필요한 경우 교학처(031-696-8803)로 문의해 주세요."""
+        },
+        "입학": {
+            "title": "입학/서류 안내",
+            "content": """## 입학/서류 안내
+- 입학원서 및 자기소개서
+- 개인정보 동의서
+- 졸업(예정)증명서 등 학력 증빙 서류
+세부 제출서류와 자격요건은 모집요강에 따라 달라질 수 있습니다.
+정확한 안내는 교학처(031-696-8803)로 문의해 주세요."""
+        },
+        "교수소개": {
+            "title": "교수님 소개 안내",
+            "content": """## 교수님 소개
+상단 메뉴의 교수님 소개에서 학과별 교수님 정보를 확인할 수 있습니다.
+추가 문의는 교학처(031-696-8803)로 연락해 주세요."""
+        },
+        "인사": {
+            "title": "인사",
+            "content": "안녕하세요, Poly-i 입니다. 궁금한 점이 있으면 물어보세요."
+        },
+        "훈련장려금": {
+            "title": "훈련장려금 안내",
+            "content": """## 훈련장려금 안내
+혜택: 교육훈련비 전액 국비지원, 출석률 80% 이상 시 훈련장려금 지급
+- 훈련장려금 상세: 일반 1일 3,300원(월 6.6만 한도), 취약계층 1일 10,000원(월 20만 한도), 교통비 1일 2,500원(월 5만 한도)"""
+        },
+        "비전공자취업현황": {
+            "title": "비전공자 취업 현황 안내",
+            "content": """## 비전공자 취업 현황 안내
+### AI금융소프트웨어과 (2016~2024)
+- 2024 행정학과 (비공학/비전공) → ㈜큐드
+- 2024 조리외식경영 (비공학/비전공) → ㈜만들다소프트
+- 2024 관광경영학과 (비공학/비전공) → ㈜매커스
+- 2023 영어학과 (비공학/비전공) → ㈜유클릭
+- 2022 불어불문학 (비공학/비전공) → ㈜유클릭
+- 2021 연극영화학 (비공학/비전공) → 뱅크웨어글로벌(주)
+- 2016 신학 (비공학/비전공) → ㈜희남
+
+### AI응용소프트웨어과 (주요 비전공 사례)
+- 2024 경제세무학과 (비공학/비전공) → (주)인스케이프
+- 2024 간호학과 (비공학/비전공) → 주식회사퀸타매트릭스
+- 2024 체육학과 (비공학/비전공) → 하이온넷(주)
+- 2017 국어교육 (비공학/비전공) → ㈜라온피플
+- 2017 일본어일본학 (비공학/비전공) → ㈜APSystems
+
+### 생명의료시스템과 (주요 사례)
+- 2024 화공신소재 (공학/전공) → 이지솔루텍
+- 2024 응용화학 (공학/전공) → 에스티젠바이오
+- 2016 제지공학 (공학/전공) → 기초과학연구원"""
+        },
+        "기업연계": {
+            "title": "기업 연계 안내",
+            "content": """## 기업 연계 안내
+2025학년도 모집요강과 학과별 취업현황(2024~2016) 데이터를 바탕으로, 강력한 기업 연계 시스템을 갖추고 있습니다.
+단순한 소개를 넘어 기업 맞춤형 프로젝트와 산학 연계를 통해 실제 취업으로 이어지도록 지원합니다.
+
+### 기업 연계 프로젝트
+- 수도권 중견·강소기업과 사전 취업 협약 체결
+- 기업 요구 기술을 배우는 맞춤형 프로젝트 과정 운영
+
+### 채용 연계형 공동 개발
+- 학생·교수·기업이 함께 참여하는 공동 기술 개발
+- 실제 채용으로 연계되는 구조
+
+### 실제 사례
+뱅크웨어글로벌, 유클릭, 제니스앤컴퍼니, 삼성바이오로직스 등 협약 기업 또는 동문 기업으로 취업 사례가 있습니다."""
+        },
+        "비전공자비율": {
+            "title": "비전공자 비율 안내",
+            "content": """## 비전공자 비율 안내
+비전공자의 비율이 상당히 높으며, 인문·사회·예체능 계열 등 다양한 전공자가 참여하고 있습니다.
+IT 관련 학과의 경우 과반수 이상이 비전공자인 기수도 많습니다.
+
+### 다양한 전공 분포
+2024학년도 취업 현황을 보면 행정학, 조리외식경영, 관광경영, 사회복지학, 국어국문학, 영어영문학, 간호학, 체육학, 패션 전공 등
+매우 다양한 비전공자들이 입학하여 교육을 받았습니다.
+
+### 지원 체계
+모집 요강에 인문계·비전공자 지원 체계가 명시되어 있으며, 비전공자를 위한 기초 단기 과정을 운영해
+전공 탐색 기회와 학습 적응력을 높여줍니다."""
+        },
+        "비전공자취업가능": {
+            "title": "비전공자 취업 가능 여부",
+            "content": """## 비전공자도 취업 가능해요
+네, 충분히 가능합니다. 실제 데이터를 보면 비전공자들이 교육 수료 후 IT 및 소프트웨어 개발자로 성공적으로 취업하고 있습니다.
+
+### 취업 성공 사례(2024 기준)
+- 행정학과 → IT 기업 ㈜큐드, ㈜코어인프라
+- 조리외식경영 → 소프트웨어 기업 ㈜만들다소프트
+- 간호학과 → 바이오/IT 기업 주식회사퀸타매트릭스
+- 체육학과 → 공공기관 전산/체육 분야 진출
+- 어문계열(영어, 국어국문 등) → 메리티움(주), ㈜아이플랜비즈 등 IT 기업
+
+### 교육 과정
+비전공자 수준에 맞춘 기초 과정(프로그래밍 언어 기초 등)부터 시작해 심화·특화 과정으로 이어지는
+단계별 커리큘럼이 있어 개발자로 성장할 수 있습니다."""
+        },
+        "인공지능소프트웨어과": {
+            "title": "인공지능소프트웨어과 안내",
+            "content": """인공지능(AI) 기술을 소프트웨어에 접목시키는 실무형 AI 소프트웨어 엔지니어를 양성하는 곳입니다.
+
+한국폴리텍대학 분당융합기술교육원의 인공지능소프트웨어과(구 AI금융소프트웨어과)는
+비전공자도 기초부터 심화까지 체계적으로 배워 IT 개발자로 취업할 수 있도록 돕는 국비지원 과정입니다.
+
+## 주요 교육 내용
+- 프로그래밍 언어: Java, Python, C언어 등 개발 필수 언어
+- 소프트웨어 개발: Web/App 풀스택 개발, 정보시스템 구축 및 운영
+- AI 및 빅데이터: 딥러닝, 머신러닝, 빅데이터 분석 및 시각화
+- 클라우드 및 인프라: 리눅스, 클라우드 컴퓨팅 환경 구축
+
+## 이런 분들에게 추천해요
+- 비전공자이지만 개발자로 커리어를 전환하고 싶은 분
+- AI 기술을 활용한 서비스를 만들고 싶은 분
+- 10개월 집중 교육으로 포트폴리오와 자격증을 준비하고 싶은 분
+
+## 취업 분야
+- AI 응용 소프트웨어 개발자
+- 웹/앱 개발자
+- 빅데이터 분석 및 플랫폼 엔지니어
+- 핀테크 및 금융 IT 전문가
+
+## 지원 혜택
+- 교육비, 교재비, 실습비 전액 무료
+- 매월 훈련수당 및 교통비 지급
+- 수료 후 우수 기업 취업 알선 및 사후 관리"""
+        },
+        "인공지능소프트웨어학과설명": {
+            "title": "인공지능소프트웨어학과 설명",
+            "content": """## 인공지능소프트웨어학과 특징
+1. 빅데이터 분석, AI 응용, 정보시스템 구축·운영, 데이터베이스 설계 등 소프트웨어 개발자 양성을 목표로 합니다.
+2. 10~20년 이상 현장 경험이 풍부한 전임 교수진이 지도합니다.
+3. 최신 워크스테이션 구축 등 최신 교육 환경을 제공합니다.
+4. 우수 기업과의 산학협력(MOU) 체결 및 추가 진행 중입니다.
+5. 정원 20명 내외 소수정예 클래스로 운영됩니다.
+6. 교육비 전액 정부지원(+교통비, 중식비, 교육수당 지급)."""
+        },
+        "위치": {
+            "title": "위치 안내",
+            "content": """한국폴리텍대학 분당융합기술교육원
+길찾기
+전화
+031-696-8800
+주소
+황새울로329번길 5 한국폴리텍대학 융합기술교육원
+지번
+서현동 272-6"""
+        },
+        "교육비": {
+            "title": "교육비 안내",
+            "content": """## 교육비 안내
+교육비는 전액 무료(국비 지원)입니다. 매월 훈련수당을 받으면서 다닐 수 있습니다.
+
+### 전액 국비 지원
+- 교육훈련비, 실습비, 교재비 전액 지원
+- 원서 접수비 및 면접 전형료도 무료
+
+### 훈련장려금(출석률 80% 이상)
+- 일반 훈련생: 월 최대 11만 6천 원
+- 취약계층: 월 최대 25만 원"""
         },
     },
-    'en': {
-        'parking': {
-            'title': '🚗 Parking Guide',
-            'content': """## Bundang Polytechnic Parking Information
-
-### Nearby Parking Options
-1. **Bundang District Office Parking**
-   - 1 hour free, 400 won per 30 min after
-   - Weekdays 8 AM - 7 PM
-
-2. **Seohyeon Station Transfer Parking**
-   - 400 won per 30 min, 1,000 won per hour
-   - Open 24 hours
-
-3. **Hotel Skypark Central Seoul Pangyo**
-   - 4,900 won (weekday), 4,400 won (weekend)
-   - Monthly pass: 170,000 won
-
-4. **Hwangsaeul Park Parking**
-   - Arrive at 5 AM for guaranteed spot
-   - Address: 287, Hwangsaeul-ro, Bundang-gu
-
-**Location**: Seohyeon-dong, Bundang-gu, Seongnam-si, Gyeonggi-do"""
+    "en": {
+        "parking": {
+            "title": "Parking Information",
+            "content": """## Parking
+- Bundang District Office Parking: 1 hour free, 400 KRW / 30 min
+- Seohyeon Station Transfer Parking: 1,000 KRW / hour, open 24/7
+Map: https://map.kakao.com/?q=Bundang+Polytechnic+Parking"""
         },
-        'lunch': {
-            'title': '🍽️ Dining Information',
-            'content': """## Bundang Polytechnic Dining Options
-
-### On-Campus Cafeterias
-- Bundang Post Office: 6,500 won
-- Tax Office: 6,500 won
-- AK Cafeteria: 6,000 won
-
-### Nearby Restaurants
-- General restaurants: ~12,000 won (lunch)
-- Convenience stores: 3,000-5,000 won
-
-### School Facilities
-- Floor 1: Lunch area available
-- Amenities: Refrigerator, microwave, water purifier
-
-**Lunch Time**: 12:00 PM - 1:00 PM (±30 min flexible)"""
+        "lunch": {
+            "title": "Dining Information",
+            "content": """## Dining
+- 1F Cafeteria: space for packed lunches (microwave/water available)
+- Nearby dining options around Seohyeon Station
+Map: https://map.kakao.com/?q=Seohyeon+Station+Food"""
         },
-        'allowance': {
-            'title': '💰 Training Allowance Information',
-            'content': """## National Employment Support Program Benefits
-
-### Training Allowance
-- **General**: 3,300 won/day (Max 66,000 won/month)
-- **Low-income**: 10,000 won/day (Max 200,000 won/month)
-
-### Transportation
-- **Allowance**: 2,500 won/day (Max 50,000 won/month)
-
-### Payment Terms
-- Requirement: 80% or higher monthly attendance
-- Payment: Mid-next month to personal account
-- Unit: Monthly
-
-### Eligibility
-- Age 39 or under
-- 2-year university graduate or expected
-- 4-year university with 2+ years coursework
-- 2+ years practical experience in related field"""
+        "greeting": {
+            "title": "Greeting",
+            "content": "Hello, I'm Poly-i. How can I help you?"
         },
-    }
+        "location": {
+            "title": "Location",
+            "content": """Bundang Polytechnic College (융합기술교육원)
+Phone
+031-696-8800
+Address
+5 Hwangsaeul-ro 329beon-gil, Bundang-gu, Seongnam-si
+Lot number
+272-6, Seohyeon-dong"""
+        },
+        "departments": {
+            "title": "Departments",
+            "content": """## Hi-Tech Programs
+1. AI Software (formerly AI Finance Software)
+2. Biomedical Systems
+3. AI Application Software
+
+## Senior Programs (Intensive)
+1. AI Coding Assistance
+2. AIoT Coding Basics
+3. IT Audit Basics"""
+        },
+        "employment": {
+            "title": "Employment Overview",
+            "content": """Recent 5-year employment rate (2019-2023): 91.7%.
+Department employment examples are available on request."""
+        },
+        "tuition": {
+            "title": "Tuition",
+            "content": "Tuition is fully government-funded. You may also receive monthly training allowances."
+        }
+    },
 }
 
-def get_keyword_response(prompt: str, language: str = 'ko') -> dict:
-    """키워드 기반 응답 검색"""
+KO_KEYWORD_MAP = {
+    "비전공자 취업현황": "비전공자취업현황",
+    "비전공 취업현황": "비전공자취업현황",
+    "비전공자 취업": "비전공자취업현황",
+    "비전공 취업": "비전공자취업현황",
+    "비전공자": "비전공자취업현황",
+    "비전공": "비전공자취업현황",
+    "안녕": "인사",
+    "안녕하세요": "인사",
+    "반가워": "인사",
+    "기업연계": "기업연계",
+    "기업 연계": "기업연계",
+    "기업연계해주니": "기업연계",
+    "기업 연계해주니": "기업연계",
+    "연계": "기업연계",
+    "비전공자 비율": "비전공자비율",
+    "비전공 비율": "비전공자비율",
+    "비전공자 비율 어떻게": "비전공자비율",
+    "비전공자 비율 어떻게 돼": "비전공자비율",
+    "비전공자도 취업 가능": "비전공자취업가능",
+    "비전공자 취업 가능": "비전공자취업가능",
+    "비전공자도 취업": "비전공자취업가능",
+    "비전공 취업 가능": "비전공자취업가능",
+    "교육비": "교육비",
+    "교육비가 얼마": "교육비",
+    "교육비 얼마": "교육비",
+    "인공지능소프트웨어과": "인공지능소프트웨어과",
+    "인공지능 소프트웨어과": "인공지능소프트웨어과",
+    "AI소프트웨어과": "인공지능소프트웨어과",
+    "AI 소프트웨어과": "인공지능소프트웨어과",
+    "인공지능소프트웨어과가 뭐": "인공지능소프트웨어과",
+    "인공지능소프트웨어과가 뭐 가르치는": "인공지능소프트웨어과",
+    "인공지능소프트웨어학과": "인공지능소프트웨어학과설명",
+    "인공지능소프트웨어학과 설명": "인공지능소프트웨어학과설명",
+    "식당/주차장": "식당주차",
+    "주차/식당": "식당주차",
+    "주차": "주차",
+    "주차 안내": "주차",
+    "식사": "식사",
+    "식당": "식사",
+    "점심": "식사",
+    "학과소개": "학과소개",
+    "학과 소개": "학과소개",
+    "학과": "학과소개",
+    "취업현황": "취업현황",
+    "취업 현황": "취업현황",
+    "취업률": "취업현황",
+    "훈련장려금": "훈련장려금",
+    "훈련수당": "훈련장려금",
+    "교통비": "훈련장려금",
+    "위치": "위치",
+    "오시는 길": "위치",
+    "주소": "위치",
+    "하이테크": "학과소개",
+    "하이테크과정": "학과소개",
+    "교수": "교수소개",
+    "교수님": "교수소개",
+    "교수님 소개": "교수소개",
+    "서류": "입학",
+    "입학": "입학",
+    "입학정보": "입학",
+    "서류/입학정보": "입학",
+    "신중년 특화과정": "신중년특화안내",
+    "신중년특화과정": "신중년특화안내",
+    "신중년 특화": "신중년특화안내",
+    "신중년": "신중년특화안내",
+}
+
+EN_KEYWORD_MAP = {
+    "hello": "greeting",
+    "hi": "greeting",
+    "hey": "greeting",
+    "parking": "parking",
+    "car": "parking",
+    "lunch": "lunch",
+    "food": "lunch",
+    "dining": "lunch",
+    "allowance": "tuition",
+    "support": "tuition",
+    "transport": "tuition",
+    "tuition": "tuition",
+    "fee": "tuition",
+    "location": "location",
+    "address": "location",
+    "department": "departments",
+    "departments": "departments",
+    "employment": "employment",
+}
+
+
+def get_keyword_response(prompt: str, language: str = "ko") -> Optional[Dict[str, Any]]:
+    """간단 키워드 매칭 응답."""
     prompt_lower = prompt.lower()
-    responses = KEYWORD_RESPONSES.get(language, KEYWORD_RESPONSES['ko'])
-    
-    # 한국어 키워드 매핑
-    if language == 'ko':
-        keyword_map = {
-            '주차': '주차',
-            '식사': '식사',
-            '수당': '수당',
-            '위치': '위치',
-            '점심': '식사',
-            '밥': '식사',
-            '주소': '위치',
-            '가는길': '위치',
-            '교통': '위치',
-            '훈련수당': '수당',
-            '교통비': '수당',
-            'allowance': '수당',
-        }
-        
-        for keyword, response_key in keyword_map.items():
-            if keyword in prompt_lower:
-                if response_key in responses:
-                    return {
-                        'response': responses[response_key]['content'],
-                        'tokens_used': 0,
-                        'model': 'KEYWORD_MATCHER',
-                        'language': language,
-                        'source': 'keyword'
-                    }
+    prompt_clean = re.sub(r"[^0-9A-Za-z\u3131-\u318E\uAC00-\uD7A3\s]", "", prompt_lower).strip()
+    responses = KEYWORD_RESPONSES.get(language, KEYWORD_RESPONSES["ko"])
+
+    if language == "ko":
+        keyword_map = KO_KEYWORD_MAP
     else:
-        # 영어 키워드 매핑
-        keyword_map = {
-            'parking': 'parking',
-            'lunch': 'lunch',
-            'dining': 'lunch',
-            'restaurant': 'lunch',
-            'allowance': 'allowance',
-            'food': 'lunch',
-            'location': 'parking',
-            'address': 'parking',
-        }
-        
-        for keyword, response_key in keyword_map.items():
-            if keyword in prompt_lower:
-                if response_key in responses:
-                    return {
-                        'response': responses[response_key]['content'],
-                        'tokens_used': 0,
-                        'model': 'KEYWORD_MATCHER',
-                        'language': language,
-                        'source': 'keyword'
-                    }
-    
+        keyword_map = EN_KEYWORD_MAP
+
+    if language == "ko" and prompt_clean in {"안녕", "안녕하세요", "반가워"}:
+        resp = responses.get("인사")
+        if resp:
+            return {
+                "response": resp["content"],
+                "tokens_used": 0,
+                "model": "KEYWORD_MATCHER",
+                "language": language,
+                "source": "keyword",
+                "title": resp.get("title", ""),
+            }
+
+    if language != "ko" and prompt_clean in {"hello", "hi", "hey"}:
+        resp = responses.get("greeting")
+        if resp:
+            return {
+                "response": resp["content"],
+                "tokens_used": 0,
+                "model": "KEYWORD_MATCHER",
+                "language": language,
+                "source": "keyword",
+                "title": resp.get("title", ""),
+            }
+
+    for keyword, response_key in keyword_map.items():
+        if (keyword in prompt_lower or keyword in prompt_clean) and response_key in responses:
+            resp = responses[response_key]
+            return {
+                "response": resp["content"],
+                "tokens_used": 0,
+                "model": "KEYWORD_MATCHER",
+                "language": language,
+                "source": "keyword",
+                "title": resp.get("title", ""),
+            }
     return None
 
-def generate_response(prompt: str, user_id: str = "default", max_tokens: int = 256, temperature: float = 0.7, language: str = "ko"):
-    """
-    SOLAR-7B 모델로 텍스트 생성 (한국어/영어 지원)
-    
-    Args:
-        prompt: 입력 프롬프트
-        user_id: 사용자 ID
-        max_tokens: 최대 토큰 수
-        temperature: 생성 온도 (0.0 ~ 1.0)
-        language: 언어 ('ko' 또는 'en')
-    
-    Returns:
-        dict: 생성된 응답과 메타데이터
-    """
-    
+
+def _build_system_prompt(language: str) -> str:
+    if language == "ko":
+        return (
+            "당신은 분당융합기술교육원의 AI 상담원입니다. 제공된 자료를 바탕으로 답변하세요. "
+            "모르는 내용은 지어내지 말고, 필요한 경우 교학처(031-696-8803)로 문의하도록 안내하세요. "
+            "숫자/조건/기간은 명확히 쓰고, 간결한 Markdown 형식을 사용하세요."
+        )
+    return (
+        "You are an AI counselor for a university career center. Answer using the provided data only. "
+        "Do not fabricate; if unsure, advise contacting the admin office (031-696-8803). "
+        "Use Markdown and keep answers concise with clear numbers."
+    )
+
+
+def generate_response(
+    prompt: str,
+    user_id: str = "default",
+    max_tokens: int = 256,
+    temperature: float = 0.7,
+    language: str = "ko",
+) -> Dict[str, Any]:
+    """LLM 기반 응답 (키워드 우선, 없으면 LLM)."""
     try:
-        # 1. 먼저 키워드 기반 응답 확인
-        keyword_response = get_keyword_response(prompt, language)
-        if keyword_response:
-            return keyword_response
-        
-        # 2. LLM 모델로 응답 생성
+        keyword_resp = get_keyword_response(prompt, language)
+        if keyword_resp:
+            keyword_resp["user_id"] = user_id
+            return keyword_resp
+
         model = get_llm_model()
-        
         if not model:
-            # 모델이 로드되지 않은 경우 기본 응답 반환
-            logger.warning("LLM model not loaded, using fallback response")
-            fallback_msg = "죄송합니다. 모델 로드 중입니다. 다시 시도해주세요." if language == "ko" else "Sorry, model is loading. Please try again."
+            msg = "모델 로딩 중입니다. 잠시 후 다시 시도해 주세요." if language == "ko" else "Model is loading. Please try again."
             return {
-                'response': fallback_msg,
-                'tokens_used': 0,
-                'model': 'SOLAR-7B',
-                'user_id': user_id,
-                'language': language,
-                'error': 'model_not_loaded'
+                "response": msg,
+                "tokens_used": 0,
+                "model": "LLM",
+                "user_id": user_id,
+                "language": language,
+                "error": "model_not_loaded",
             }
-        
-        # 언어에 따른 시스템 프롬프트
-        if language == "ko":
-            system_prompt = """당신은 분당폴리텍 교육과정을 안내하는 친절한 챗봇 Poly-i입니다.
 
-## 📍 분당폴리텍 프로그램 정보
-
-### 💼 국민취업지원제도 (O)
-- **훈련수당**: 1일 3,300원 (월 6만6천원 한도)
-- **취약계층 훈련수당**: 1일 1만원 (월 20만원 한도)
-- **교통비**: 1일 2,500원 (월 5만원 한도)
-- **지급조건**: 단위기간 1개월 동안 출석률 80% 이상
-- **지급시기**: 다음달 중순경 개인계좌로 입금
-
-### 👤 지원자격
-다음 중 하나에 해당해야 함:
-1. **만 39세 이하**인 자
-2. **2년제 대학 이상 졸업 (예정)자**
-3. **4년제 대학 2년 이상 수료자**
-4. **이와 동등 수준의 학력** (학점은행제 등)
-5. **동일 및 유사 계열 2년 이상 실무 종사자**
-
-### 🎯 교육 특징
-- ✅ **조기취업 가능** - 교육 중에 취업하면 조기 수료 가능
-- ❌ **기숙사 미운영** - 통학 또는 자체 숙소 필요
-- 📚 **교재 및 강사료 제공** - 교수님이 제공
-
-### 🏢 시설 안내
-- **2층**: 도서관 + 행정실
-- **1층**: 도시락 섭취 공간 (구내 식당 없음)
-- **편의시설**: 냉장고, 전자렌지, 정수기
-
-### ⏰ 시간표 및 방학
-- **수업 시작 시간**: 오전 9시
-- **점심시간**: 12:00~13:00 (±30분 조정 가능)
-- **출석 확인**: 교수님이 직접 체크
-- **방학기간**: 연 2회 (상세일정은 교육과정별로 상이)
-
-## 🚗 주차장 안내
-
-### 분당구청 주차장
-- **1시간**: 무료
-- **1시간 초과**: 30분당 400원
-- **3시간**: 3,100원
-- **운영시간**: 평일 8시~19시
-- **주말**: 무료 (오전 만차 가능)
-
-### 서현역 환승공영주차장
-- **30분**: 400원
-- **1시간**: 1,000원
-- **1시간 초과**: 1시간 기준 1,200원씩 추가
-
-### 호텔스카이파크 센트럴서울판교
-- **주만사 할인권**: 평일 4,900원, 휴일 4,400원
-- **월 정기권**: 17만원 (주만사 15% 할인 시 약 14.5만원)
-- **위치**: 경기 성남시 분당구 서현동 261-1
-
-### 황새울공원 주차장
-- **주소**: 경기 성남시 분당구 황새울로 287
-- **팁**: 새벽 5시에 도착하면 주차 가능
-
-## 🍽️ 점심 식사 정보
-
-### 학내 구내식당
-- **분당우체국 구내식당**: 6,500원
-- **분당세무서**: 6,500원
-- **AK 구내식당**: 6,000원
-
-### 근처 음식점
-- **일반 밥집**: 약 12,000원 (점심 기준)
-
-### 학교 내 편의시설
-- 1층에서 도시락 섭취 가능
-- 냉장고, 전자렌지, 정수기 제공
-
-## 대답 방식
-- 사용자의 질문에 정확하고 친절하게 답변
-- 마크다운 형식으로 정보를 정리
-- 구체적인 금액과 조건을 명시
-- 모르는 정보는 행정실 문의 안내"""
-            prefix = "사용자: "
-            suffix = "\n답변:"
-        else:
-            system_prompt = """You are Poly-i, a friendly chatbot for Bundang Polytechnic education programs.
-
-## 📍 Bundang Polytechnic Program Information
-
-### 💼 National Employment Support Program (YES)
-- **Training Allowance**: 3,300 won/day (Max 66,000 won/month)
-- **Low-income Allowance**: 10,000 won/day (Max 200,000 won/month)
-- **Transportation**: 2,500 won/day (Max 50,000 won/month)
-- **Requirement**: 80% or higher monthly attendance
-- **Payment**: Mid-next month to personal account
-
-### 👤 Eligibility Requirements
-One of the following:
-1. **Age 39 or under**
-2. **2-year university graduate or expected graduate**
-3. **4-year university with 2+ years of coursework**
-4. **Equivalent education level** (Credit Bank System, etc.)
-5. **2+ years of practical experience in related field**
-
-### 🎯 Program Features
-- ✅ **Early Employment Possible** - Can graduate early if employed
-- ❌ **No Dormitory** - Commute or self-arranged housing
-- 📚 **Materials & Instruction Provided**
-
-### 🏢 Facilities
-- **Floor 2**: Library + Administration Office
-- **Floor 1**: Lunch Area (No cafeteria)
-- **Amenities**: Refrigerator, Microwave, Water purifier
-
-### ⏰ Schedule & Holidays
-- **Class Start**: 9:00 AM
-- **Lunch Time**: 12:00~13:00 (±30 min flexible)
-- **Attendance**: Instructor verification
-- **Breaks**: 2 breaks per year (varies by program)
-
-## 🚗 Parking Information
-
-### Bundang District Office Parking
-- **1 hour**: Free
-- **Over 1 hour**: 400 won per 30 min
-- **3 hours**: 3,100 won
-- **Weekdays**: 8 AM - 7 PM
-- **Weekends**: Free (May be full in the morning)
-
-### Seohyeon Station Transfer Parking
-- **30 min**: 400 won
-- **1 hour**: 1,000 won
-- **Over 1 hour**: 1,200 won per hour
-
-### Hotel Skypark Central Seoul Pangyo
-- **Discount Ticket**: 4,900 won (weekday), 4,400 won (weekend)
-- **Monthly Pass**: 170,000 won (15% discount with Jumansa)
-- **Location**: 261-1, Seohyeon-dong, Bundang-gu, Seongnam-si, Gyeonggi-do
-
-### Hwangsaeul Park Parking
-- **Address**: 287, Hwangsaeul-ro, Bundang-gu, Seongnam-si
-- **Tip**: Arrive at 5 AM for guaranteed parking
-
-## 🍽️ Lunch Options
-
-### On-Campus Dining
-- **Bundang Post Office Cafeteria**: 6,500 won
-- **Tax Office**: 6,500 won
-- **AK Cafeteria**: 6,000 won
-
-### Nearby Restaurants
-- **Local Restaurants**: About 12,000 won (lunch)
-
-### School Facilities
-- Lunch area available on 1st floor
-- Refrigerator, microwave, water purifier provided
-
-## Response Style
-- Accurate and helpful answers
-- Use markdown format
-- Specify exact amounts and conditions
-- Refer to administration office for unknown details"""
-            prefix = "User: "
-            suffix = "\nResponse:"
-        
+        system_prompt = _build_system_prompt(language)
+        prefix = "사용자: " if language == "ko" else "User: "
+        suffix = "\n답변:" if language == "ko" else "\nResponse:"
         full_prompt = f"{system_prompt}\n\n{prefix}{prompt}{suffix}"
-        
-        # 모델 실행
+
         output = model(
             full_prompt,
             max_tokens=max_tokens,
@@ -425,64 +514,39 @@ One of the following:
             top_p=0.95,
             top_k=50,
             repeat_penalty=1.1,
-            echo=False
+            echo=False,
         )
-        
-        response_text = output['choices'][0]['text'].strip()
-        tokens_used = output['usage']['completion_tokens']
-        
+
+        response_text = output["choices"][0]["text"].strip()
+        tokens_used = output.get("usage", {}).get("completion_tokens", 0)
+
         return {
-            'response': response_text,
-            'tokens_used': tokens_used,
-            'model': 'SOLAR-7B',
-            'user_id': user_id,
-            'language': language
-        }
-        
-    except Exception as e:
-        logger.error(f"LLM Generation Error: {str(e)}")
-        error_msg = f"오류가 발생했습니다: {str(e)}" if language == "ko" else f"Error occurred: {str(e)}"
-        return {
-            'response': error_msg,
-            'tokens_used': 0,
-            'model': 'SOLAR-7B',
-            'user_id': user_id,
-            'language': language,
-            'error': str(e)
+            "response": response_text,
+            "tokens_used": tokens_used,
+            "model": "LLM",
+            "user_id": user_id,
+            "language": language,
+            "source": "llm",
         }
 
-def create_system_prompt(intent: str = "general"):
-    """
-    의도별 시스템 프롬프트 생성
-    
-    Args:
-        intent: 사용자 의도 (general, inquiry, complaint, feedback 등)
-    
-    Returns:
-        str: 시스템 프롬프트
-    """
-    
+    except Exception as e:
+        logger.error(f"LLM Generation Error: {e}")
+        error_msg = f"오류가 발생했습니다: {e}" if language == "ko" else f"Error occurred: {e}"
+        return {
+            "response": error_msg,
+            "tokens_used": 0,
+            "model": "LLM",
+            "user_id": user_id,
+            "language": language,
+            "error": str(e),
+        }
+
+
+def create_system_prompt(intent: str = "general") -> str:
     prompts = {
-        "general": """당신은 Poly-i라는 친절한 상담 챗봇입니다.
-- 사용자의 질문에 정확하고 도움이 되는 답변을 제공하세요.
-- 명확하고 간결한 언어를 사용하세요.
-- 모르는 것은 솔직하게 인정하세요.""",
-        
-        "inquiry": """당신은 제품/서비스 문의를 담당하는 상담원입니다.
-- 사용자의 질문에 구체적인 정보를 제공하세요.
-- 필요하면 추가 정보 수집을 위해 명확한 질문을 하세요.
-- 친절하고 전문적인 태도를 유지하세요.""",
-        
-        "complaint": """당신은 민원 처리 담당자입니다.
-- 사용자의 불만을 공감하는 태도로 경청하세요.
-- 문제를 이해하려고 노력하세요.
-- 해결 방안을 적극적으로 제시하세요.
-- 상황에 따라 인간 담당자로의 전환을 제안하세요.""",
-        
-        "feedback": """당신은 피드백을 수집하는 담당자입니다.
-- 사용자의 의견을 개방적으로 받아들이세요.
-- 명확한 피드백을 수집하세요.
-- 감사의 마음을 표현하세요.""",
+        "general": "질문에 간단하고 명확하게 답변하세요.",
+        "inquiry": "문의 응답: 필요한 정보와 근거, 연락처(031-696-8803)를 안내하세요.",
+        "complaint": "민원 응답: 공감하고 해결 절차와 담당 부서를 안내하세요.",
+        "feedback": "피드백 수집: 개선 의견을 경청하고 기록하세요.",
     }
-    
     return prompts.get(intent, prompts["general"])

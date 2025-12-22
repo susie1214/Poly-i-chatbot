@@ -1,9 +1,20 @@
 flask==3.0.0
 flask-cors==4.0.0
 python-dotenv==1.0.0
-torch==2.0.1
-transformers==4.34.1
-sentence-transformers==2.2.2
+
+# Core ML deps
+torch>=2.2.0
+transformers>=4.44.0
+accelerate>=0.33.0
+sentence-transformers>=2.6.1
 llama-cpp-python==0.2.19
-numpy==1.24.3
-pydantic==2.4.2
+numpy>=1.24.0,<3
+
+# LangChain / parsing
+pydantic>=2.4.2,<3
+langchain>=0.1.11,<0.2
+langgraph==0.0.32
+langchain-community>=0.0.29,<0.1
+pypdf>=4.0.2,<5
+faiss-cpu>=1.7.4,<2
+chandra-ocr @ git+https://github.com/datalab-to/chandra

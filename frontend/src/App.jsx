@@ -2,6 +2,7 @@ import '@/styles/iphone.css';
 import { useEffect } from 'react';
 import IPhoneFrame from '@/components/IPhoneFrame';
 import ChatContainer from '@/components/ChatContainer';
+import homepageBg from '@/assets/homepage.png';
 
 function App() {
   useEffect(() => {
@@ -9,7 +10,10 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-poly-blue-light via-white to-poly-blue-light flex items-center justify-center p-4">
+    <div
+      className="min-h-screen flex items-center justify-end p-4 md:pr-10 bg-center bg-no-repeat bg-cover"
+      style={{ backgroundImage: `url(${homepageBg})` }}
+    >
       <IPhoneFrame>
         <ChatContainer />
       </IPhoneFrame>
