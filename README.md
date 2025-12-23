@@ -1,7 +1,7 @@
-# 📡 Poly-i Chatbot
+#  🤖 Poly-i Chatbot
 
-공공·기관 환경을 염두에 둔 **문서 기반 질의응답 시스템**입니다.  
-과도한 생성 중심 접근을 지양하고, **검색·근거·일관성**을 중심으로 설계되었습니다.
+안녕하세요! 분당폴리텍(융합기술교육원) 안내를 돕는 귀여운 챗봇 Poly-i입니다.  
+학과/입학/취업/생활정보를 빠르고 정확하게 알려드려요.
 
 ----
 
@@ -21,8 +21,8 @@
 - ♻ 동일 질의에 대해 일관된 결과 제공
 
 ----
-<img width="425" height="878" alt="image" src="https://github.com/user-attachments/assets/2d4eb150-03c3-4363-aad3-17e23f1d7ce9" />
-<img width="453" height="889" alt="image" src="https://github.com/user-attachments/assets/1ed61e22-e0f8-4889-b8e0-f210949eb1be" />
+<img width="1901" height="922" alt="image" src="https://github.com/user-attachments/assets/4fc4be50-b978-4e49-a387-9300722a440d" />
+<img width="398" height="875" alt="image" src="https://github.com/user-attachments/assets/e3cf0510-debf-411c-a5be-270a82858114" />
 
 
 ## 🏗 System Architecture
