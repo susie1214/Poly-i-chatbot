@@ -153,7 +153,7 @@ export default function ChatContainer() {
     };
   }, [messages, isLoading]);
 
-  const sendToBackend = async (text) => {
+  const sendToBackend = async (text, source = 'text') => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 200_000); // 60초 timeout
 
@@ -165,6 +165,7 @@ export default function ChatContainer() {
           prompt: text,
           language: language,
           user_id: 'web-user',
+          source: source,
         }),
         signal: controller.signal,
       });
@@ -252,7 +253,7 @@ export default function ChatContainer() {
     setIsLoading(true);
 
     try {
-      const replyText = await sendToBackend(question);
+      const replyText = await sendToBackend(question, 'button');
       addMessage({
         id: Date.now() + 1,
         type: 'assistant',

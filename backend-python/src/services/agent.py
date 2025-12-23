@@ -6,8 +6,7 @@ import logging
 from typing import Dict, Any, List, Literal
 from enum import Enum
 
-from langgraph.graph import StateGraph
-from langgraph.graph import START, END
+from langgraph.graph import StateGraph, END
 
 from typing_extensions import TypedDict
 
@@ -55,7 +54,7 @@ class PolyiAgent:
         workflow.add_node("generate_response", self._generate_response)
         
         # 엣지 정의 (라우팅)
-        workflow.add_edge(START, "classify")
+        workflow.set_entry_point("classify")
         workflow.add_conditional_edges(
             "classify",
             self._route_to_search,

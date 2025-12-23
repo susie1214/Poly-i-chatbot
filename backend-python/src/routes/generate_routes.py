@@ -4,6 +4,12 @@ import time
 from datetime import datetime
 from src.services.llm_service import generate_response, get_keyword_response
 from src.services.rag_service import generate_rag_response, is_rag_initialized
+try:
+    from src.services.langgraph_service import invoke_graph
+    LANGGRAPH_AVAILABLE = True
+except Exception:
+    invoke_graph = None
+    LANGGRAPH_AVAILABLE = False
 
 generate_bp = Blueprint('generate', __name__)
 logger = logging.getLogger(__name__)
@@ -48,82 +54,78 @@ def generate():
         max_tokens = data.get('max_tokens', 256)
         temperature = data.get('temperature', 0.7)
         language = data.get('language', 'ko')  # 기본값: 한국어
+        source = data.get('source', 'text')
 
         if not prompt:
             return jsonify({'error': 'prompt is required'}), 400
 
-        # 요청 로깅
+        # request log (ASCII only)
         start_time = time.time()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print("\n" + "="*60)
-        print(f"📥 새로운 요청 수신 [{timestamp}]")
-        print(f"   사용자: {user_id}")
-        print(f"   질문: {prompt}")
-        print(f"   언어: {language}")
-        print("="*60)
+        print("\n" + "=" * 60)
+        print(f"[Request] {timestamp}")
+        print(f"  user_id: {user_id}")
+        print(f"  prompt : {prompt}")
+        print(f"  lang   : {language}")
+        print("=" * 60)
 
         # RAG 초기화 확인
         rag_initialized = is_rag_initialized()
         logger.info(f"RAG initialized: {rag_initialized}")
 
-        # 먼저 키워드 기반 응답 확인 (빠른 응답 보장)
-        keyword_resp = get_keyword_response(prompt, language)
-        if keyword_resp:
-            elapsed = time.time() - start_time
-            print(f"\n✅ 키워드 매칭 성공 (소스: keyword)")
-            print(f"⏱️  처리 시간: {elapsed:.2f}초")
-            print(f"📤 응답: {keyword_resp['response'][:100]}...")
-            print("="*60 + "\n")
-            keyword_resp['user_id'] = user_id
-            return jsonify(keyword_resp), 200
-
-        # RAG 기반 응답 생성
-        if rag_initialized:
-            print(f"\n🔍 RAG 검색 시작...")
-            response = generate_rag_response(
-                query=prompt,
-                language=language,
-                k=3  # 검색 문서 개수: 5 → 3개로 감소
-            )
-            # 문서 정보 추가
-            response['user_id'] = user_id
-            response['tokens_used'] = response.get('tokens_used', 0)
-
-            # 응답 로깅
-            elapsed = time.time() - start_time
-            print(f"\n✅ RAG 응답 생성 완료")
-            print(f"   소스: {response.get('source', 'unknown')}")
-            print(f"   토큰: {response.get('tokens_used', 0)}")
-            print(f"   문서 수: {len(response.get('documents', []))}")
-            print(f"⏱️  처리 시간: {elapsed:.2f}초")
-            print(f"📤 응답 내용:")
-            print("-"*60)
-            print(response.get('response', '')[:500])
-            if len(response.get('response', '')) > 500:
-                print("... (이하 생략)")
-            print("="*60 + "\n")
-
-            return jsonify(response), 200
-        else:
-            # RAG 미초기화 시 기존 LLM 사용
-            print(f"\n⚠️ RAG 미초기화 - Fallback LLM 사용")
-            logger.info("Using fallback LLM response")
+        button_request = source == 'button'
+        if button_request:
             response = generate_response(
                 prompt=prompt,
                 user_id=user_id,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                language=language
+                language=language,
             )
+            if response.get('error') == 'model_not_loaded':
+                button_request = False
 
-            elapsed = time.time() - start_time
-            print(f"\n✅ LLM 응답 생성 완료")
-            print(f"⏱️  처리 시간: {elapsed:.2f}초")
-            print(f"📤 응답: {response.get('response', '')[:200]}...")
-            print("="*60 + "\n")
+        # LangGraph flow: keyword -> RAG -> LLM fallback
+        if not button_request:
+            if LANGGRAPH_AVAILABLE and invoke_graph:
+                response = invoke_graph(
+                    prompt=prompt,
+                    language=language,
+                    user_id=user_id,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+            else:
+                keyword_resp = get_keyword_response(prompt, language)
+                if keyword_resp:
+                    keyword_resp["user_id"] = user_id
+                    response = keyword_resp
+                elif rag_initialized:
+                    response = generate_rag_response(query=prompt, language=language, k=3)
+                    response["user_id"] = user_id
+                    response["tokens_used"] = response.get("tokens_used", 0)
+                else:
+                    response = generate_response(
+                        prompt=prompt,
+                        user_id=user_id,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        language=language,
+                    )
 
-            return jsonify(response), 200
-        
+        elapsed = time.time() - start_time
+        print("\n[Response] done")
+        print(f"  source : {response.get('source', 'unknown')}")
+        print(f"  tokens : {response.get('tokens_used', 0)}")
+        print(f"  docs   : {len(response.get('documents', []))}")
+        print(f"  time   : {elapsed:.2f}s")
+        print("  preview:")
+        print("-" * 60)
+        print(response.get('response', '')[:500])
+        if len(response.get('response', '')) > 500:
+            print("... (truncated)")
+        print("=" * 60 + "\n")
+        return jsonify(response), 200        
     except Exception as e:
         # 에러 로깅
         print("\n" + "="*60)
